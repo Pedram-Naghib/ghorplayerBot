@@ -28,7 +28,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import bot, db
 from utils.permissions import is_authorized_admin
-from utils.text import normalize_trigger, matches_command
+from utils.text import normalize_trigger, matches_command, bidi_isolate
 from music import state, pool, playback
 from music.panel_io import send_panel_message, edit_panel_message
 from music.youtube import search_and_download, YoutubeUnavailable
@@ -78,7 +78,7 @@ def _info_line(performer: str, duration: int) -> str:
 def _requester_line(requester_id: int, requester_name: str) -> str:
     if not requester_id:
         return ""
-    name = html.escape(requester_name or "کاربر")
+    name = bidi_isolate(html.escape(requester_name or "کاربر"))
     return f'\n🎧 درخواست: <a href="tg://user?id={requester_id}">{name}</a>'
 
 

@@ -76,6 +76,22 @@ def normalize_trigger(text: str) -> str:
     return strip_bot_mention(normalize_fa(text))
 
 
+def bidi_isolate(text: str) -> str:
+    """
+    Wraps `text` with Unicode directional isolates (U+2066 LRI ... U+2069
+    PDI). Use this around a person's display name/username before
+    embedding it inside an RTL Persian sentence (e.g. inside an <a> mention
+    tag) - without it, a Latin-script name sitting in the middle of a
+    Persian sentence can make Telegram's bidi algorithm visually reorder
+    the surrounding words ("به‌هم‌ریختگیِ جمله"), because the renderer
+    can't tell where the embedded left-to-right run ends and the Persian
+    right-to-left text resumes. Isolating it removes the ambiguity.
+    """
+    if not text:
+        return text
+    return "\u2066" + text + "\u2069"
+
+
 def matches_command(
     text: str,
     triggers,

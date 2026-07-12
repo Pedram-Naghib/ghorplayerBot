@@ -20,7 +20,7 @@ from typing import Optional
 from telebot.types import ChatMemberUpdated, Message
 
 from core import bot, db
-from utils.text import normalize_trigger, normalize_fa
+from utils.text import normalize_trigger, normalize_fa, bidi_isolate
 from utils.permissions import (
     is_global_owner,
     is_super_admin,
@@ -29,6 +29,7 @@ from utils.permissions import (
 )
 from utils import global_admins
 
+ADMIN_STATUSES = {"administrator", "creator"}
 IN_CHAT_STATUSES = {"member", "administrator", "restricted"}
 
 ADD_OWNER2_TRIGGERS = {"افزودن مالک دو", "افزودن مالک ۲"}
@@ -102,19 +103,31 @@ async def _resolve_target(message: Message) -> Optional[_TargetRef]:
 
 
 def _mention(target: _TargetRef) -> str:
-    return f'<a href="tg://user?id={target.id}">{target.full_name}</a>'
+    """یک منشنِ قابل‌کلیک، فقط یک‌بار در جمله استفاده بشه (نه هم به‌صورتِ متنِ
+    ساده هم دوباره به‌صورتِ لینک - همون چیزی که باعثِ تکرارِ اسم می‌شد). نامِ
+    نمایشی رو با کاراکترهایِ ایزوله‌یِ جهت‌نگاری (bidi_isolate) می‌پیچونه تا
+    اگه اسم لاتین بود (مثلِ یوزرنیم‌هایِ انگلیسی)، وسطِ جمله‌یِ فارسی باعثِ
+    به‌هم‌ریختگیِ ترتیبِ کلمات نشه."""
+    return f'<a href="tg://user?id={target.id}">{bidi_isolate(target.full_name)}</a>'
 
 
 # ---------------------------------------------------------------- #
 # AUTO-OWNER: whoever adds the bot to a group becomes its «مالک اصلی»
+# + admin-status awareness: پیام‌هایِ متنیِ گروه (نه دستورهایِ /، نه ریپلای
+# به خودِ ربات) فقط وقتی به ربات می‌رسن که یا ربات ادمینِ گروهه، یا حالتِ
+# privacy (تنظیماتِ BotFather) خاموش باشه. چون این یک محدودیتِ خودِ تلگرامه
+# (نه یک باگ)، بهترین کاری که از کد برمیاد اینه که وضعیتِ ادمین رو رصد کنه
+# و همیشه شفاف بگه چرا دستورها کار می‌کنن یا نمی‌کنن - نه سکوتِ گنگ.
 # ---------------------------------------------------------------- #
 @bot.my_chat_member_handler()
 async def on_bot_added_to_chat(update: ChatMemberUpdated):
     if update.chat.type not in ("group", "supergroup"):
         return
 
-    was_in_chat = update.old_chat_member.status in IN_CHAT_STATUSES
-    is_in_chat = update.new_chat_member.status in IN_CHAT_STATUSES
+    old_status = update.old_chat_member.status
+    new_status = update.new_chat_member.status
+    was_in_chat = old_status in IN_CHAT_STATUSES
+    is_in_chat = new_status in IN_CHAT_STATUSES
 
     if not was_in_chat and is_in_chat and update.from_user:
         await db.set_user_role(
@@ -122,16 +135,45 @@ async def on_bot_added_to_chat(update: ChatMemberUpdated):
             username=update.from_user.username, first_name=update.from_user.first_name,
             last_name=update.from_user.last_name,
         )
+        adder = _TargetRef(
+            id=update.from_user.id, username=update.from_user.username,
+            first_name=update.from_user.first_name, last_name=update.from_user.last_name,
+        )
+        if new_status == "administrator":
+            admin_note = "✅ همین الان هم <b>ادمین</b> هستم، پس همه‌یِ دستورها همین الان کار می‌کنن."
+        else:
+            admin_note = (
+                "⚠️ <b>هنوز ادمین نیستم.</b> تا وقتی از تنظیماتِ گروه من رو ادمین نکنید، به هیچ‌کدوم "
+                "از پیام‌هایِ متنیِ گروه (مثلِ «پخش»، «هاب»، «یوزربات‌ها») جواب نمی‌دم و ساکت می‌مونم - "
+                "این محدودیتِ خودِ تلگرامه، نه خرابی‌ای تو ربات. نیازی به هیچ دسترسیِ خاصی ندارم، "
+                "فقط همینِ عضویتِ «ادمین» کافیه."
+            )
         try:
             await bot.send_message(
                 update.chat.id,
-                f"👑 {update.from_user.full_name} من رو به این گروه اضافه کرد و به‌عنوان "
-                f"<b>مالکِ اصلیِ این گروه</b> ثبت شد - فقط در همین گروه، دسترسیِ کامل به کنترلِ "
-                f"موزیک داره و می‌تونه مالکِ ۲/ادمین هم تعیین کنه.\n\n"
-                f"⚠️ برای این‌که بتونم وارد ویس‌چت بشم، یکی از یوزربات‌های استخر باید عضوِ این "
-                f"گروه باشه - با «یوزربات‌ها» می‌تونی ببینی کدوم‌ها آماده‌ان.\n\n"
-                f"برای شروع: رویِ یک فایلِ صوتی ریپلای کن و بنویس «پخش».",
+                f"👑 {_mention(adder)} من رو به این گروه اضافه کرد و به‌عنوان <b>مالکِ اصلیِ این "
+                f"گروه</b> ثبت شد - فقط در همین گروه، دسترسیِ کامل به کنترلِ موزیک داره و می‌تونه "
+                f"مالکِ ۲/ادمین هم تعیین کنه.\n\n"
+                f"{admin_note}\n\n"
+                f"برای دیدنِ همه‌یِ دستورها بنویس: <code>راهنما</code>",
             )
+        except Exception:
+            pass
+        return
+
+    if was_in_chat and is_in_chat and old_status != new_status:
+        if new_status == "administrator" and old_status != "administrator":
+            text = "✅ الان ادمینِ این گروه شدم - از این به بعد همه‌یِ دستورها (پخش، هاب، یوزربات‌ها، ...) کار می‌کنن."
+        elif old_status == "administrator" and new_status != "administrator":
+            text = (
+                "⚠️ ادمینیِ من از این گروه گرفته شد - از الان به هیچ‌کدوم از پیام‌هایِ متنیِ گروه "
+                "(پخش، هاب، یوزربات‌ها، ...) جواب نمی‌دم، چون بدونِ ادمین بودن تلگرام اصلاً این "
+                "پیام‌ها رو به من نمی‌رسونه. برایِ برگردوندنش، دوباره ادمینم کنید."
+            )
+        else:
+            return
+        try:
+            await bot.send_message(update.chat.id, text)
         except Exception:
             pass
 
@@ -152,8 +194,8 @@ async def add_admin(message: Message):
                             username=target.username, first_name=target.first_name, last_name=target.last_name)
     await bot.reply_to(
         message,
-        f"✅ {target.full_name} اکنون ادمینِ این گروه است (فقط در همین گروه) و می‌تواند موزیک "
-        f"را کنترل کند.\n\n{_mention(target)}",
+        f"✅ {_mention(target)} اکنون ادمینِ این گروه است (فقط در همین گروه) و می‌تواند موزیک "
+        f"را کنترل کند.",
     )
 
 
@@ -167,10 +209,10 @@ async def remove_admin(message: Message):
         await bot.reply_to(message, "⚠️ رویِ پیامِ کاربرِ موردنظر ریپلای کنید.")
         return
     if await db.get_user_role(message.chat.id, target.id) != "admin":
-        await bot.reply_to(message, f"{target.full_name} ادمینِ این گروه نیست.")
+        await bot.reply_to(message, f"{_mention(target)} ادمینِ این گروه نیست.")
         return
     await db.set_user_role(message.chat.id, target.id, "normal")
-    await bot.reply_to(message, f"✅ دسترسیِ ادمین از {target.full_name} گرفته شد.")
+    await bot.reply_to(message, f"✅ دسترسیِ ادمین از {_mention(target)} گرفته شد.")
 
 
 # ---------------------------------------------------------------- #
@@ -189,8 +231,8 @@ async def add_owner2(message: Message):
                             username=target.username, first_name=target.first_name, last_name=target.last_name)
     await bot.reply_to(
         message,
-        f"✅ {target.full_name} اکنون مالکِ ۲ این گروه است (فقط در همین گروه) و می‌تواند ادمین "
-        f"هم تعیین/عزل کند.\n\n{_mention(target)}",
+        f"✅ {_mention(target)} اکنون مالکِ ۲ این گروه است (فقط در همین گروه) و می‌تواند ادمین "
+        f"هم تعیین/عزل کند.",
     )
 
 
@@ -204,10 +246,10 @@ async def remove_owner2(message: Message):
         await bot.reply_to(message, "⚠️ رویِ پیامِ کاربرِ موردنظر ریپلای کنید.")
         return
     if await db.get_user_role(message.chat.id, target.id) != "owner2":
-        await bot.reply_to(message, f"{target.full_name} مالکِ ۲ این گروه نیست.")
+        await bot.reply_to(message, f"{_mention(target)} مالکِ ۲ این گروه نیست.")
         return
     await db.set_user_role(message.chat.id, target.id, "normal")
-    await bot.reply_to(message, f"✅ دسترسیِ مالکِ ۲ از {target.full_name} گرفته شد.")
+    await bot.reply_to(message, f"✅ دسترسیِ مالکِ ۲ از {_mention(target)} گرفته شد.")
 
 
 # ---------------------------------------------------------------- #
@@ -225,8 +267,8 @@ async def add_global_admin_cmd(message: Message):
     await global_admins.add(db, target.id, promoted_by=message.from_user.id)
     await bot.reply_to(
         message,
-        f"✅ {target.full_name} اکنون ادمینِ کلِ ربات است - دسترسیِ کامل در همه‌یِ گروه‌ها، "
-        f"بالاتر از مالکِ اصلی/مالکِ ۲/ادمینِ هر گروه.\n\n{_mention(target)}",
+        f"✅ {_mention(target)} اکنون ادمینِ کلِ ربات است - دسترسیِ کامل در همه‌یِ گروه‌ها، "
+        f"بالاتر از مالکِ اصلی/مالکِ ۲/ادمینِ هر گروه.",
     )
 
 
@@ -237,14 +279,14 @@ async def remove_global_admin_cmd(message: Message):
         await bot.reply_to(message, "⚠️ رویِ پیامِ کاربرِ موردنظر ریپلای کنید.")
         return
     if not global_admins.is_global_admin(target.id):
-        await bot.reply_to(message, f"{target.full_name} ادمینِ کل نیست.")
+        await bot.reply_to(message, f"{_mention(target)} ادمینِ کل نیست.")
         return
     promoter_id = global_admins.get_promoter(target.id)
     if not (is_global_owner(message.from_user.id) or message.from_user.id == promoter_id):
         await bot.reply_to(message, "⛔️ فقط مالکِ ربات یا کسی که این فرد را ادمینِ کل کرده می‌تواند این دسترسی را بگیرد.")
         return
     await global_admins.remove(db, target.id)
-    await bot.reply_to(message, f"✅ دسترسیِ ادمینِ کل از {target.full_name} گرفته شد.")
+    await bot.reply_to(message, f"✅ دسترسیِ ادمینِ کل از {_mention(target)} گرفته شد.")
 
 
 @bot.message_handler(func=lambda m: _norm(m) in LIST_GLOBAL_ADMINS_TRIGGERS)
