@@ -30,6 +30,7 @@ from core import bot, db
 from utils.permissions import is_authorized_admin
 from utils.text import normalize_trigger, matches_command
 from music import state, pool, playback
+from music.panel_io import send_panel_message, edit_panel_message
 from music.youtube import search_and_download, YoutubeUnavailable
 
 _LOOP_LABELS = {
@@ -199,8 +200,9 @@ async def handle_play_reply(message):
         return
 
     kind = "ویدیو" if media["with_video"] else "موزیک"
-    panel = await bot.reply_to(
-        message, f"⏳ در حال اتصال به ویس‌چت برایِ پخشِ {kind} «{html.escape(media['title'])}»..."
+    panel = await send_panel_message(
+        chat_id, f"⏳ در حال اتصال به ویس‌چت برایِ پخشِ {kind} «{html.escape(media['title'])}»...",
+        reply_to_message_id=message.message_id,
     )
 
     local_path = None
@@ -243,11 +245,11 @@ async def handle_play_youtube(message):
         await bot.reply_to(message, "❗️ بعدِ «پخش آهنگ» اسمِ آهنگ یا لینکِ یوتیوب رو بنویس.")
         return
 
-    panel = await bot.reply_to(message, f"🔎 در حال جستجویِ «{html.escape(query)}»...")
+    panel = await send_panel_message(chat_id, f"🔎 در حال جستجویِ «{html.escape(query)}»...", reply_to_message_id=message.message_id)
     try:
         result = await search_and_download(query)
     except YoutubeUnavailable as e:
-        await bot.edit_message_text(str(e), chat_id, panel.message_id)
+        await edit_panel_message(chat_id, panel.message_id, str(e))
         return
 
     track = {
@@ -304,7 +306,7 @@ async def handle_hub(message):
         now.get("requester_id"), now.get("requester_name", ""),
         state.get_loop(chat_id), state.get_volume(chat_id), state.is_muted(chat_id),
     )
-    sent = await bot.reply_to(message, text_out, reply_markup=kb)
+    sent = await send_panel_message(chat_id, text_out, kb=kb, reply_to_message_id=message.message_id)
     playback.repoint_panel(chat_id, sent.message_id)
 
 # ── «یوزربات‌ها» - وضعیتِ استخر ────────────────────────────

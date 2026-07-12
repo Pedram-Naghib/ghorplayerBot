@@ -135,3 +135,16 @@ def get_cached_assistant_index(chat_id: int):
 
 def set_cached_assistant_index(chat_id: int, index: int):
     _chat_assistant[chat_id] = index
+
+
+# ── Hub panel: is the current panel message a media banner (caption) or
+# plain text? (see music/panel_io.py + "ثبت تصویر music_hub_banner") ──
+_panel_is_banner: dict = {}
+
+
+def get_panel_is_banner(chat_id: int) -> bool:
+    return _panel_is_banner.get(chat_id, False)
+
+
+def set_panel_is_banner(chat_id: int, is_banner: bool):
+    _panel_is_banner[chat_id] = is_banner

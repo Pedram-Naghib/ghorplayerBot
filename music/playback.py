@@ -20,6 +20,7 @@ from pytgcalls.exceptions import NoActiveGroupCall, NotInCallError
 from config import MUSIC_IDLE_TIMEOUT_SECONDS
 from music import pool, state
 from music.state import LOOP_NONE, LOOP_TRACK, LOOP_QUEUE
+from music.panel_io import edit_panel_message
 
 _bot_instance = None
 _db = None
@@ -49,7 +50,7 @@ async def _emit_panel(chat_id: int):
         panel_msg_id = _last_panel.get(chat_id)
         if panel_msg_id:
             try:
-                await _bot_instance.edit_message_text(text, chat_id, panel_msg_id, reply_markup=kb)
+                await edit_panel_message(chat_id, panel_msg_id, text, kb)
             except Exception:
                 pass
         return
@@ -61,7 +62,7 @@ async def _emit_panel(chat_id: int):
         state.get_loop(chat_id), state.get_volume(chat_id), state.is_muted(chat_id),
     )
     try:
-        await _bot_instance.edit_message_text(text, chat_id, now.get("panel_msg_id"), reply_markup=kb)
+        await edit_panel_message(chat_id, now.get("panel_msg_id"), text, kb)
     except Exception as e:
         if "message is not modified" not in str(e).lower():
             print(f"⚠️ _emit_panel edit failed for {chat_id}: {type(e).__name__}: {e}")
@@ -169,7 +170,7 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
     assistant, err = await pool.get_or_assign(_db, chat_id)
     if err:
         _cleanup_file(track.get("audio_path"))
-        await _bot_instance.edit_message_text(err, chat_id, panel_msg_id)
+        await edit_panel_message(chat_id, panel_msg_id, err)
         return
 
     now = state.get_now(chat_id)
@@ -189,10 +190,10 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
         pos = state.push_to_queue(chat_id, track)
         try:
             from handlers.music_commands import build_queue_added
-            await _bot_instance.edit_message_text(
+            await edit_panel_message(
+                chat_id, panel_msg_id,
                 build_queue_added(track.get("title", ""), track.get("performer", ""),
                                    track.get("duration", 0), pos),
-                chat_id, panel_msg_id,
             )
         except Exception:
             await _emit_toast(chat_id, f"🎵 «{track.get('title')}» به صف اضافه شد (موقعیت {pos}).")

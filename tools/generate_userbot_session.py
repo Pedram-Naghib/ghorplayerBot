@@ -7,18 +7,8 @@ tools/generate_userbot_session.py
 لوکال روی کامپیوترِ خودت، به‌ازایِ هر اکانتی که می‌خوای اضافه کنی اجرا می‌شه.
 
 اجرا:
-    pip install telethon
+    pip install telethon python-socks[asyncio]
     python tools/generate_userbot_session.py
-
-مراحل: API_ID/API_HASH (از my.telegram.org - یک‌بار کافیه، برایِ همه‌یِ
-اکانت‌های خودت قابلِ استفاده‌ست) رو می‌پرسه، بعد شماره‌یِ همون اکانتی که
-می‌خوای یوزربات بشه، بعد کدِ تاییدی که تلگرام برایِ همون اکانت می‌فرسته
-(و رمزِ دو-مرحله‌ای اگه روشن بود). در پایان یک رشته‌یِ طولانی (StringSession)
-چاپ می‌کنه - این رشته رو کپی کن و به لیستِ USERBOT_SESSIONS در .env اضافه
-کن (با کاما جدا از بقیه‌یِ سشن‌ها اگه از قبل چیزی اونجا بود).
-
-⚠️ این رشته معادلِ لاگین‌بودنِ کاملِ اون اکانته - مثلِ رمزِ عبور باهاش رفتار
-کن، جایی paste نکن که بقیه ببینن، و توی گیت‌هاب کامیت نکن.
 """
 
 import asyncio
@@ -34,12 +24,22 @@ async def main():
 
     api_id = input("API_ID (از my.telegram.org): ").strip()
     api_hash = input("API_HASH (از my.telegram.org): ").strip()
+    use_proxy = input("استفاده از پراکسی لوکال (پورت 10808)؟ (y/n) [پیش‌فرض y]: ").strip().lower() != 'n'
 
     if not api_id.isdigit() or not api_hash:
         print("❌ API_ID باید عدد باشه و API_HASH نباید خالی باشه.")
         return
 
-    client = TelegramClient(StringSession(), int(api_id), api_hash)
+    # تنظیم داینامیک پراکسی برای جلوگیری از هاردکد شدن مقادیر لوکال
+    proxy_settings = ("socks5", '127.0.0.1', 10808) if use_proxy else None
+
+    client = TelegramClient(
+        StringSession(), 
+        int(api_id), 
+        api_hash,
+        proxy=proxy_settings
+    )
+    
     await client.start()  # شماره/کد/رمزِ دو-مرحله‌ای رو خودِ Telethon تعاملی می‌پرسه
 
     me = await client.get_me()
