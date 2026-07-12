@@ -2,6 +2,10 @@
 config.py
 ----------
 Central configuration, loaded from environment variables (see .env.example).
+
+This bot is standalone (a separate bot/repo from ghormanagmentBot) - it
+only does one thing: play music in a group's voice chat, gated by the same
+owner/owner2/admin role hierarchy (no VIP tier here).
 """
 
 import os
@@ -21,10 +25,6 @@ PROXY_URL = os.getenv("PROXY_URL", "")
 
 # --- Database: direct asyncpg connection to your Supabase Postgres ---
 # Find these in Supabase: Project Settings -> Database -> Connection info.
-# Using the direct connection (port 5432) is recommended here since the bot
-# keeps its own connection pool open for its whole lifetime. If you use the
-# pooler instead (port 6543 / pgbouncer transaction mode), asyncpg needs
-# statement_cache_size=0 - see the note in database.py's connect().
 DB_HOST = os.getenv("DB_HOST", "")
 DB_PORT = int(os.getenv("DB_PORT", 5432))
 DB_USER = os.getenv("DB_USER", "postgres")
@@ -45,39 +45,6 @@ WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 WEBAPP_PORT = int(os.getenv("PORT", os.getenv("WEBAPP_PORT", 8080)))
 
-# --- Anti-spam fallback defaults ---
-# Only used for a chat that hasn't set its own thresholds yet.
-# NOTE: the time window is intentionally fixed at 3 seconds and no longer
-# admin-configurable (see handlers/admin_commands.py) - simpler for a
-# normal admin than tuning three separate numbers.
-DEFAULT_SPAM_MESSAGE_LIMIT = int(os.getenv("SPAM_MESSAGE_LIMIT", 6))
-DEFAULT_SPAM_TIME_WINDOW_SECONDS = int(os.getenv("SPAM_TIME_WINDOW_SECONDS", 3))
-DEFAULT_SPAM_MUTE_MINUTES = int(os.getenv("SPAM_MUTE_MINUTES", 30))
-
-# --- Stats ---
-STATS_TOP_N = int(os.getenv("STATS_TOP_N", 15))
-
-# --- Message log retention ---
-# message_logs stores ONE ROW PER MESSAGE (needed for «آمار روزانه» and for
-# «حذف N»/«حذف کل» to know real Telegram message_ids to delete) - unlike
-# the running totals in group_users (messages_all_time), this table grows
-# forever unless pruned. A background job (see bot.py) deletes rows older
-# than this many days on a timer, keeping Supabase storage bounded
-# regardless of how chatty a group is. «آمار کل» is unaffected (it's a
-# counter, not row-based); «آمار روزانه» only ever needs 24h so this has
-# huge headroom; «حذف کل» will only reach messages within this window,
-# which matches what's actually useful anyway.
-MESSAGE_LOG_RETENTION_DAYS = int(os.getenv("MESSAGE_LOG_RETENTION_DAYS", 3))
-
-# --- Optional: shown as a button on /start if set ---
-SUPPORT_URL = os.getenv("SUPPORT_URL", "https://t.me/it_modi")
-
-# --- Web-based message editor (/admin/messages) ---
-# Leave both empty to disable the page entirely (returns 404) rather than
-# ever accepting a blank/guessable login.
-ADMIN_PANEL_USERNAME = os.getenv("ADMIN_PANEL_USERNAME", "")
-ADMIN_PANEL_PASSWORD = os.getenv("ADMIN_PANEL_PASSWORD", "")
-
 # --- Music (پخش موزیک در ویس‌چت) ---
 # پخش نیاز به یک یا چند «یوزربات» دارد - اکانتِ واقعیِ تلگرام (نه ربات) که
 # وارد ویس‌چتِ گروه می‌شود. چند تا از این‌ها با هم یک «استخر» (pool) تشکیل
@@ -90,7 +57,7 @@ ADMIN_PANEL_PASSWORD = os.getenv("ADMIN_PANEL_PASSWORD", "")
 # به استخر اضافه کنی، لوکال اجرا کن و رشته‌ی خروجی رو اینجا کپی کن.
 #
 # API_ID/API_HASH رو از my.telegram.org می‌گیری (یک‌بار کافیه، برای همه‌ی
-# اکانت‌های خودت قابل استفاده‌ست).
+# اکانت‌های خودت قابل استفاده‌ست - نه یک جفت جدا برای هر اکانت).
 USERBOT_API_ID = int(os.getenv("USERBOT_API_ID", 0))
 USERBOT_API_HASH = os.getenv("USERBOT_API_HASH", "")
 
