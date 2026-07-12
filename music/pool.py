@@ -17,6 +17,7 @@ tools/generate_userbot_session.py) هم‌زمان بالا بیان؛ هر گر
 """
 
 import os
+from urllib.parse import urlparse  # ماژول استاندارد برای شکستن آدرس پراکسی
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -24,7 +25,8 @@ from telethon.sessions import StringSession
 from pytgcalls import PyTgCalls
 from pytgcalls.types import StreamEnded
 
-from config import USERBOT_API_ID, USERBOT_API_HASH, USERBOT_SESSIONS
+# حتماً PROXY_URL باید اینجا ایمپورت شود
+from config import USERBOT_API_ID, USERBOT_API_HASH, USERBOT_SESSIONS, PROXY_URL
 
 
 class Assistant:
@@ -79,8 +81,21 @@ async def start_pool():
     except Exception as e:
         print(f"⚠️ static_ffmpeg setup skipped: {e}")
 
+    # تبدیلِ داینامیکِ PROXY_URL محیطی به فرمتِ مدنظرِ Telethon
+    proxy_settings = None
+    if PROXY_URL:
+        parsed = urlparse(PROXY_URL)
+        # خروجی نهایی: مثلاً ("http", "127.0.0.1", 10809)
+        proxy_settings = (parsed.scheme, parsed.hostname, parsed.port)
+
     for idx, session_str in enumerate(sessions):
-        client = TelegramClient(StringSession(session_str), USERBOT_API_ID, USERBOT_API_HASH)
+        # اضافه کردنِ پراکسی به کلاینت در زمانِ ساخت
+        client = TelegramClient(
+            StringSession(session_str), 
+            USERBOT_API_ID, 
+            USERBOT_API_HASH,
+            proxy=proxy_settings
+        )
         calls = PyTgCalls(client)
         assistant = Assistant(idx, client, calls)
 
