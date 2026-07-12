@@ -205,19 +205,29 @@ async def handle_play_reply(message):
         reply_to_message_id=message.message_id,
     )
 
-    local_path = None
-    if media["file_size"] == 0 or media["file_size"] <= BOT_DL_LIMIT:
-        try:
-            os.makedirs("downloads", exist_ok=True)
-            finfo = await bot.get_file(media["file_id"])
-            data = await bot.download_file(finfo.file_path)
-            ext = os.path.splitext(finfo.file_path or "")[1] or ".audio"
-            local_path = os.path.join("downloads", f"{chat_id}_{message.reply_to_message.message_id}{ext}")
-            with open(local_path, "wb") as f:
-                f.write(data)
-        except Exception as e:
-            print(f"⚠️ bot-side download failed ({e}); یوزربات fallback می‌کنه.")
-            local_path = None
+    # دانلودِ فایل و پیدا/چسبوندنِ یوزربات هر دو کارِ کندِ شبکه‌ای‌ان و کاملاً
+    # مستقل از هم - قبلاً پشتِ سرِ هم (اول دانلود، بعد پیدا کردنِ یوزربات)
+    # اجرا می‌شدن که یعنی زمانشون جمع می‌شد؛ الان هم‌زمان اجرا می‌شن تا
+    # زمانِ کلی به‌جایِ جمع، تقریباً برابرِ کندترینشون بشه.
+    async def _download():
+        if media["file_size"] == 0 or media["file_size"] <= BOT_DL_LIMIT:
+            try:
+                os.makedirs("downloads", exist_ok=True)
+                finfo = await bot.get_file(media["file_id"])
+                data = await bot.download_file(finfo.file_path)
+                ext = os.path.splitext(finfo.file_path or "")[1] or ".audio"
+                path = os.path.join("downloads", f"{chat_id}_{message.reply_to_message.message_id}{ext}")
+                with open(path, "wb") as f:
+                    f.write(data)
+                return path
+            except Exception as e:
+                print(f"⚠️ bot-side download failed ({e}); یوزربات fallback می‌کنه.")
+        return None
+
+    download_task = asyncio.create_task(_download())
+    assign_task = asyncio.create_task(pool.get_or_assign(db, chat_id))
+    local_path = await download_task
+    assistant, assign_err = await assign_task
 
     track = {
         "source": "file", "audio_chat_id": chat_id, "audio_msg_id": message.reply_to_message.message_id,
@@ -226,7 +236,8 @@ async def handle_play_reply(message):
         "file_unique_id": media["file_unique_id"], "requester_id": user_id,
         "requester_name": message.from_user.first_name or "",
     }
-    asyncio.create_task(playback.cmd_play(chat_id, track, panel.message_id, user_id))
+    asyncio.create_task(playback.cmd_play(chat_id, track, panel.message_id, user_id,
+                                           assistant=assistant, assign_err=assign_err))
 
 # ── «پخش آهنگ <عبارت/لینک>» - جستجویِ یوتیوب ───────────────
 @bot.message_handler(
@@ -246,11 +257,15 @@ async def handle_play_youtube(message):
         return
 
     panel = await send_panel_message(chat_id, f"🔎 در حال جستجویِ «{html.escape(query)}»...", reply_to_message_id=message.message_id)
+
+    assign_task = asyncio.create_task(pool.get_or_assign(db, chat_id))
     try:
         result = await search_and_download(query)
     except YoutubeUnavailable as e:
+        assign_task.cancel()
         await edit_panel_message(chat_id, panel.message_id, str(e))
         return
+    assistant, assign_err = await assign_task
 
     track = {
         "source": "youtube", "audio_path": result["path"], "title": result["title"],
@@ -258,7 +273,8 @@ async def handle_play_youtube(message):
         "file_unique_id": result.get("webpage_url", ""), "requester_id": user_id,
         "requester_name": message.from_user.first_name or "",
     }
-    asyncio.create_task(playback.cmd_play(chat_id, track, panel.message_id, user_id))
+    asyncio.create_task(playback.cmd_play(chat_id, track, panel.message_id, user_id,
+                                           assistant=assistant, assign_err=assign_err))
 
 # ── دستورهایِ کنترلِ سریع (بدونِ نیاز به هاب) ────────────────
 @bot.message_handler(func=lambda m: _matched_control_action(m) is not None)
@@ -311,7 +327,7 @@ async def handle_hub(message):
 
 # ── «یوزربات‌ها» - وضعیتِ استخر ────────────────────────────
 @bot.message_handler(
-    func=lambda m: _is_group_text(m) and matches_command(normalize_trigger(m.text), {"یوزربات‌ها", "یوزرباتها"}),
+    func=lambda m: _is_group_text(m) and matches_command(normalize_trigger(m.text), {"یوزربات‌ها", "یوزرباتها", "یوزربات ها"}),
 )
 async def handle_pool_status(message):
     chat_id = message.chat.id

@@ -26,7 +26,7 @@ from pytgcalls import PyTgCalls
 from pytgcalls.types import StreamEnded
 
 # حتماً PROXY_URL باید اینجا ایمپورت شود
-from config import USERBOT_API_ID, USERBOT_API_HASH, USERBOT_SESSIONS, PROXY_URL
+from config import USERBOT_API_ID, USERBOT_API_HASH, USERBOT_SESSIONS, PROXY_URL, SUPPORT_CONTACT
 
 
 class Assistant:
@@ -133,13 +133,18 @@ async def start_pool():
 
 def pool_status_text() -> str:
     if not _assistants:
-        return "هیچ یوزرباتی تنظیم نشده. USERBOT_SESSIONS رو در .env پر کن."
-    lines = []
-    for a in _assistants:
-        state = "🟢 آماده" if a.ready else "🔴 خطا در راه‌اندازی"
-        uname = f"@{a.username}" if a.username else "بدون‌یوزرنیم"
-        lines.append(f"#{a.index} — {a.name or '؟'} ({uname}) — {state}")
-    return "\n".join(lines)
+        text = "هیچ یوزرباتی تنظیم نشده. USERBOT_SESSIONS رو در .env پر کن."
+    else:
+        lines = []
+        for a in _assistants:
+            state = "🟢 آماده" if a.ready else "🔴 خطا در راه‌اندازی"
+            uname = f"@{a.username}" if a.username else "بدون‌یوزرنیم"
+            lines.append(f"#{a.index} — {a.name or '؟'} ({uname}) — {state}")
+        lines.append("\nهرکدوم از این یوزرنیم‌ها رو می‌تونی مستقیم به این گروه اضافه کنی.")
+        text = "\n".join(lines)
+    if SUPPORT_CONTACT:
+        text += f"\n\n🆘 اگه خودت نتونستی اضافه‌شون کنی، به پشتیبانی پیام بده: {SUPPORT_CONTACT}"
+    return text
 
 
 async def find_membership(chat_id: int):
@@ -186,9 +191,10 @@ async def get_or_assign(db, chat_id: int):
     if a is None:
         usernames = [f"@{x.username}" for x in _assistants if x.ready and x.username]
         who = "، ".join(usernames) if usernames else "یکی از یوزربات‌های تنظیم‌شده"
+        support_line = f"\nیا به پشتیبانی پیام بده: {SUPPORT_CONTACT}" if SUPPORT_CONTACT else ""
         return None, (
             f"❗️ هیچ‌کدام از یوزربات‌ها هنوز عضو این گروه نیستند.\n"
-            f"اول {who} را به گروه اضافه کن، بعد دوباره «پخش» رو امتحان کن."
+            f"اول {who} را به گروه اضافه کن، بعد دوباره «پخش» رو امتحان کن.{support_line}"
         )
 
     await db.set_music_assignment(chat_id, a.index)

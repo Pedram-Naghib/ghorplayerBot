@@ -75,3 +75,9 @@ MUSIC_IDLE_TIMEOUT_SECONDS = int(os.getenv("MUSIC_IDLE_TIMEOUT_SECONDS", 180))
 # می‌کنه. حتی با کوکی هم تضمینی نیست - اگه یوتیوب دوباره بلاک کرد، فقط
 # حالتِ «ریپلای فایل» کار می‌کنه (music/youtube.py پیامِ خطای واضح می‌ده).
 YOUTUBE_COOKIES_PATH = os.getenv("YOUTUBE_COOKIES_PATH", "cookies.txt")
+
+# آیدیِ/یوزرنیمِ پشتیبانی (اختیاری، مثلاً "@YourSupportUsername") - وقتی
+# هیچ‌کدوم از یوزربات‌های استخر عضوِ یک گروه نیستن (پس نمی‌شه پخش کرد)،
+# پیامِ خطا هم لیستِ یوزرنیمِ یوزربات‌ها رو نشون می‌ده هم این آیدی رو، تا
+# ادمینِ گروه اگه خودش نتونست اضافه‌شون کنه، مستقیم به پشتیبانی پیام بده.
+SUPPORT_CONTACT = os.getenv("SUPPORT_CONTACT", "https://t.me/IT_NAJI")

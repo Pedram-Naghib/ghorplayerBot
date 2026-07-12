@@ -157,7 +157,8 @@ async def _start_stream(chat_id: int, assistant, track: dict) -> str:
 # ════════════════════════════════════════════════════════════
 #  cmd_play
 # ════════════════════════════════════════════════════════════
-async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: int):
+async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: int,
+                    assistant=None, assign_err: str = None):
     """
     track باید شاملِ این کلیدها باشه:
       source: "file" | "youtube"
@@ -166,11 +167,18 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
       audio_path (اختیاری - اگه از قبل دانلود شده)
       audio_chat_id/audio_msg_id (فقط برای source == "file"، برای fallback دانلود)
       webpage_url (فقط برای source == "youtube")
+
+    assistant/assign_err: اگه از قبل با pool.get_or_assign() محاسبه شده
+    (مثلاً هم‌زمان با دانلودِ فایل، تویِ handlers/music_commands.py - برایِ
+    این‌که این دو تا کارِ کندِ شبکه‌ای به‌صورتِ موازی انجام بشن نه پشتِ سرِ
+    هم)، همون رو مستقیم پاس بده تا اینجا دوباره صدا زده نشه. اگه هیچ‌کدوم
+    داده نشه (پیش‌فرض)، خودش pool.get_or_assign رو صدا می‌زنه - رفتارِ قبلی.
     """
-    assistant, err = await pool.get_or_assign(_db, chat_id)
-    if err:
+    if assistant is None and assign_err is None:
+        assistant, assign_err = await pool.get_or_assign(_db, chat_id)
+    if assign_err:
         _cleanup_file(track.get("audio_path"))
-        await edit_panel_message(chat_id, panel_msg_id, err)
+        await edit_panel_message(chat_id, panel_msg_id, assign_err)
         return
 
     now = state.get_now(chat_id)
