@@ -355,6 +355,22 @@ async def handle_music_buttons(call):
         if not tracks:
             await bot.answer_callback_query(call.id, "📋 صف خالیه.", show_alert=True)
             return
+
+        # نسخه‌ی فشرده و بدونِ HTML (چون popup فرمت‌بندی رو نشون نمی‌ده) -
+        # همون حالتِ قبلی، فقط اگه جا بشه.
+        compact_lines = []
+        for i, t in enumerate(tracks, start=1):
+            title = (t.get("title") or "نامشخص")[:30]
+            dur = _fmt_duration(t.get("duration", 0))
+            compact_lines.append(f"{i}. {title}" + (f" ({dur})" if dur else ""))
+        compact_txt = f"📋 صفِ پخش ({len(tracks)} آهنگ):\n" + "\n".join(compact_lines)
+
+        if len(compact_txt) <= 200:
+            await bot.answer_callback_query(call.id, compact_txt, show_alert=True)
+            return
+
+        # فقط وقتی صف اونقدر بلنده که تو یک alert جا نمی‌شه، یک پیامِ جدا
+        # می‌فرستیم (با جزئیاتِ کامل‌تر - خواننده و مدت‌زمان هم داره).
         lines = []
         for i, t in enumerate(tracks, start=1):
             t_title = html.escape(t.get("title") or "نامشخص")

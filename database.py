@@ -10,7 +10,7 @@ bot.py) - there's no separate schema.sql to run manually; this file IS the
 schema.
 
 --------------------------------------------------------------------------
-ROLE MODEL - single `role` column on group_users, scoped per (chat_id, user_id)
+ROLE MODEL - single `role` column on qorplayer_group_users, scoped per (chat_id, user_id)
 --------------------------------------------------------------------------
 This bot is standalone (separate from ghormanagmentBot) but mirrors its
 exact role hierarchy, MINUS "عضو ویژه" (vip) - there is no VIP tier here:
@@ -21,7 +21,7 @@ exact role hierarchy, MINUS "عضو ویژه" (vip) - there is no VIP tier here:
     'admin'  -> appointed by owner or owner2.
     'normal' -> default for everyone else.
 
-Global Owners (OWNER_USER_IDS in .env) and Global Admins (global_admins
+Global Owners (OWNER_USER_IDS in .env) and Global Admins (qorplayer_global_admins
 table, promoted dynamically) are NOT scoped to a chat - full access, every
 group, always. See utils/permissions.py for the full rank model.
 """
@@ -70,7 +70,7 @@ class Database:
             # --- Per-chat role hierarchy (owner/owner2/admin/normal - no vip) ---
             await conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS group_users (
+                CREATE TABLE IF NOT EXISTS qorplayer_group_users (
                     chat_id BIGINT,
                     user_id BIGINT,
                     first_name TEXT,
@@ -86,7 +86,7 @@ class Database:
             # --- Optional media banners (ثبت تصویر [key]) - e.g. music_hub_banner ---
             await conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS bot_assets (
+                CREATE TABLE IF NOT EXISTS qorplayer_bot_assets (
                     key TEXT PRIMARY KEY,
                     file_id TEXT NOT NULL,
                     content_type TEXT NOT NULL DEFAULT 'photo',  -- photo | animation | video
@@ -102,7 +102,7 @@ class Database:
             # keeps handling that group across restarts. ---
             await conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS music_assignments (
+                CREATE TABLE IF NOT EXISTS qorplayer_music_assignments (
                     chat_id BIGINT PRIMARY KEY,
                     userbot_index INT NOT NULL,
                     assigned_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -117,7 +117,7 @@ class Database:
             # don't require editing .env + redeploying. ---
             await conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS global_admins (
+                CREATE TABLE IF NOT EXISTS qorplayer_global_admins (
                     user_id BIGINT PRIMARY KEY,
                     promoted_by BIGINT NOT NULL,
                     promoted_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -126,7 +126,7 @@ class Database:
             )
 
     # ---------------------------------------------------------------- #
-    # USERS / PROFILE  (all scoped per chat_id, since group_users is)
+    # USERS / PROFILE  (all scoped per chat_id, since qorplayer_group_users is)
     # ---------------------------------------------------------------- #
 
     async def upsert_user(
@@ -140,7 +140,7 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO group_users (chat_id, user_id, username, first_name, last_name)
+                INSERT INTO qorplayer_group_users (chat_id, user_id, username, first_name, last_name)
                 VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (chat_id, user_id) DO UPDATE
                     SET username = EXCLUDED.username,
@@ -153,7 +153,7 @@ class Database:
     async def get_user_display_name(self, chat_id: int, user_id: int) -> str:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT username, first_name, last_name FROM group_users WHERE chat_id=$1 AND user_id=$2",
+                "SELECT username, first_name, last_name FROM qorplayer_group_users WHERE chat_id=$1 AND user_id=$2",
                 chat_id, user_id,
             )
         if not row:
@@ -165,7 +165,7 @@ class Database:
         """Look up a numeric user_id by @username (case-insensitive), across any chat."""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT user_id FROM group_users WHERE username ILIKE $1 LIMIT 1", username
+                "SELECT user_id FROM qorplayer_group_users WHERE username ILIKE $1 LIMIT 1", username
             )
         return row["user_id"] if row else None
 
@@ -176,7 +176,7 @@ class Database:
     async def get_user_role(self, chat_id: int, user_id: int) -> str:
         async with self.pool.acquire() as conn:
             role = await conn.fetchval(
-                "SELECT role FROM group_users WHERE chat_id=$1 AND user_id=$2", chat_id, user_id
+                "SELECT role FROM qorplayer_group_users WHERE chat_id=$1 AND user_id=$2", chat_id, user_id
             )
         return role or "normal"
 
@@ -193,7 +193,7 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO group_users (chat_id, user_id, username, first_name, last_name, role)
+                INSERT INTO qorplayer_group_users (chat_id, user_id, username, first_name, last_name, role)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (chat_id, user_id) DO UPDATE SET role = EXCLUDED.role
                 """,
@@ -203,25 +203,25 @@ class Database:
     async def list_users_by_role(self, chat_id: int, role: str) -> List[int]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT user_id FROM group_users WHERE chat_id=$1 AND role=$2", chat_id, role
+                "SELECT user_id FROM qorplayer_group_users WHERE chat_id=$1 AND role=$2", chat_id, role
             )
         return [r["user_id"] for r in rows]
 
     async def get_chat_owner(self, chat_id: int) -> Optional[int]:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT user_id FROM group_users WHERE chat_id=$1 AND role='owner' LIMIT 1", chat_id
+                "SELECT user_id FROM qorplayer_group_users WHERE chat_id=$1 AND role='owner' LIMIT 1", chat_id
             )
         return row["user_id"] if row else None
 
     # ---------------------------------------------------------------- #
-    # BANNERS (bot_assets) - "ثبت تصویر [key]", e.g. music_hub_banner
+    # BANNERS (qorplayer_bot_assets) - "ثبت تصویر [key]", e.g. music_hub_banner
     # ---------------------------------------------------------------- #
 
     async def get_asset(self, key: str) -> Optional[dict]:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT file_id, content_type FROM bot_assets WHERE key=$1", key
+                "SELECT file_id, content_type FROM qorplayer_bot_assets WHERE key=$1", key
             )
         return dict(row) if row else None
 
@@ -229,7 +229,7 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO bot_assets (key, file_id, content_type, set_by)
+                INSERT INTO qorplayer_bot_assets (key, file_id, content_type, set_by)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT (key) DO UPDATE
                     SET file_id = EXCLUDED.file_id,
@@ -241,14 +241,14 @@ class Database:
             )
 
     # ---------------------------------------------------------------- #
-    # GLOBAL ADMINS (ادمین کل) - bot-wide, see utils/global_admins.py
+    # GLOBAL ADMINS (ادمین کل) - bot-wide, see utils/qorplayer_global_admins.py
     # ---------------------------------------------------------------- #
 
     async def add_global_admin(self, user_id: int, promoted_by: int):
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO global_admins (user_id, promoted_by)
+                INSERT INTO qorplayer_global_admins (user_id, promoted_by)
                 VALUES ($1, $2)
                 ON CONFLICT (user_id) DO UPDATE SET promoted_by = EXCLUDED.promoted_by
                 """,
@@ -257,11 +257,11 @@ class Database:
 
     async def remove_global_admin(self, user_id: int):
         async with self.pool.acquire() as conn:
-            await conn.execute("DELETE FROM global_admins WHERE user_id=$1", user_id)
+            await conn.execute("DELETE FROM qorplayer_global_admins WHERE user_id=$1", user_id)
 
     async def list_global_admins(self) -> List[tuple]:
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch("SELECT user_id, promoted_by FROM global_admins")
+            rows = await conn.fetch("SELECT user_id, promoted_by FROM qorplayer_global_admins")
         return [(r["user_id"], r["promoted_by"]) for r in rows]
 
     # ---------------------------------------------------------------- #
@@ -271,7 +271,7 @@ class Database:
     async def get_music_assignment(self, chat_id: int) -> Optional[int]:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT userbot_index FROM music_assignments WHERE chat_id=$1", chat_id
+                "SELECT userbot_index FROM qorplayer_music_assignments WHERE chat_id=$1", chat_id
             )
         return row["userbot_index"] if row else None
 
@@ -279,7 +279,7 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO music_assignments (chat_id, userbot_index)
+                INSERT INTO qorplayer_music_assignments (chat_id, userbot_index)
                 VALUES ($1, $2)
                 ON CONFLICT (chat_id) DO UPDATE SET userbot_index = EXCLUDED.userbot_index
                 """,
