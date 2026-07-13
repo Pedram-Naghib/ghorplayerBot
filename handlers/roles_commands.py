@@ -12,9 +12,11 @@ handlers/roles_commands.py
 - «مدیران»                          - نمایشِ نقش‌هایِ همین گروه
 - «پیکربندی»                        - همه‌یِ ادمین‌هایِ واقعیِ تلگرامِ گروه رو به نقشِ ادمینِ ربات اضافه می‌کنه
 - «پاک سازی»                        - نقشِ ادمینِ ربات رو از همه می‌گیره (مالک/مالکِ ۲ دست‌نخورده می‌مونن)
+- «ایدی» / «آیدی» / «id»            - اطلاعاتِ کاربریِ کسی که رویِ پیامش ریپلای شده (یا خودِ فرستنده)
 - «ثبت تصویر [کلید]»                 - ثبتِ بنر (مثلاً music_hub_banner) - فقط مالکِ ربات/ادمین‌کل
 """
 
+import html
 import re
 from dataclasses import dataclass
 from typing import Optional
@@ -44,6 +46,7 @@ LIST_GLOBAL_ADMINS_TRIGGERS = {"لیست ادمین کل"}
 SHOW_ROLES_TRIGGERS = {"مدیران", "نقش ها", "نقش‌ها"}
 SYNC_ADMINS_TRIGGERS = {"پیکربندی"}
 CLEAR_ADMINS_TRIGGERS = {"پاک سازی", "پاکسازی"}
+SHOW_ID_TRIGGERS = {"ایدی", "آیدی", "id"}
 SET_IMAGE_PREFIX = "ثبت تصویر"
 
 _BANNER_CONTENT_TYPES = ("photo", "animation", "video")
@@ -388,6 +391,58 @@ async def clear_admins(message: Message):
         message,
         f"✅ دسترسیِ ادمین از {len(admin_ids)} نفر گرفته شد (مالکِ اصلی و مالکِ ۲ دست‌نخورده موندن).",
     )
+
+
+# ---------------------------------------------------------------- #
+# SHOW ID - «ایدی» / «آیدی» / «id»: اطلاعاتِ کاربری که رویِ پیامش ریپلای
+# شده (یا خودِ فرستنده، اگه ریپلای نکرده باشه) - عکسِ پروفایل، اسم،
+# یوزرنیم، آیدیِ عددی، و سطحِ دسترسیِ همون فرد تو این گروه.
+# ---------------------------------------------------------------- #
+@bot.message_handler(func=lambda m: normalize_trigger(m.text or "").strip().lower() in SHOW_ID_TRIGGERS)
+async def show_id(message: Message):
+    target_user = message.reply_to_message.from_user if message.reply_to_message else message.from_user
+    chat_id = message.chat.id
+
+    name = target_user.first_name or ""
+    if target_user.last_name:
+        name += f" {target_user.last_name}"
+    name = name.strip() or "بدون‌نام"
+    username = f"@{target_user.username}" if target_user.username else "ندارد"
+
+    if message.chat.type in ("group", "supergroup"):
+        if is_super_admin(target_user.id):
+            access = "🔓 ادمینِ کل / مالکِ ربات (دسترسیِ کامل، همه‌جا)"
+        else:
+            role = await db.get_user_role(chat_id, target_user.id)
+            access = ROLE_LABELS_FA.get(role, ROLE_LABELS_FA["normal"])
+    else:
+        access = "— (فقط در گروه قابلِ‌محاسبه‌ست)"
+
+    caption = (
+        "🪪 <b>اطلاعاتِ کاربر</b>\n\n"
+        f"👤 نام: {bidi_isolate(html.escape(name))}\n"
+        f"🔗 یوزرنیم: {bidi_isolate(username)}\n"
+        f"🆔 آیدیِ عددی: <code>{target_user.id}</code>\n"
+        f"🎚 سطحِ دسترسی: {access}"
+    )
+
+    photo_file_id = None
+    try:
+        photos = await bot.get_user_profile_photos(target_user.id, limit=1)
+        if photos and photos.total_count > 0:
+            photo_file_id = photos.photos[0][-1].file_id
+    except Exception as e:
+        print(f"⚠️ get_user_profile_photos failed for {target_user.id}: {type(e).__name__}: {e}")
+
+    if photo_file_id:
+        try:
+            await bot.send_photo(chat_id, photo_file_id, caption=caption, reply_to_message_id=message.message_id)
+            return
+        except Exception as e:
+            print(f"⚠️ send_photo failed for {target_user.id}: {type(e).__name__}: {e}")
+
+    # بدونِ عکس (یا اگه فرستادنِ عکس شکست خورد) - همون اطلاعات، فقط متنی
+    await bot.reply_to(message, caption + "\n\n<i>(عکسِ پروفایلی در دسترس نبود)</i>")
 
 
 # ---------------------------------------------------------------- #
