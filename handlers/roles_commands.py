@@ -429,6 +429,17 @@ async def set_image(message: Message):
             if kind:
                 file_id = reply.document.file_id
 
+    # دیباگ: هربار «ثبت تصویر» زده بشه، دقیقاً چی از پیامِ ریپلای‌شده تشخیص
+    # داده شد رو تو Deploy Logs چاپ می‌کنه - چه موفق بشه چه نشه. این‌جوری
+    # دیگه لازم نیست حدس بزنیم؛ مستقیم از لاگِ سرور می‌بینیم مشکل کجاست.
+    print(
+        f"🔍 ثبت تصویر: reply={'yes' if reply else 'no'}, "
+        f"content_type={reply.content_type if reply else None}, "
+        f"resolved_kind={kind}, "
+        f"document_mime={reply.document.mime_type if reply and reply.document else None}, "
+        f"document_name={reply.document.file_name if reply and reply.document else None}"
+    )
+
     if len(parts) < 3 or not reply or not kind:
         detected = f"\n\n(نوعِ شناسایی‌شده: <code>{reply.content_type}</code>)" if reply else ""
         await bot.reply_to(
