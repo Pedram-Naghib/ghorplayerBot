@@ -13,8 +13,6 @@ music/pool.py) مسئولِ کدام گروه است.
 
 import random
 
-IDLE_TIMEOUT = 180  # override واقعی از config.MUSIC_IDLE_TIMEOUT_SECONDS می‌آید
-
 LOOP_NONE = "none"
 LOOP_TRACK = "track"
 LOOP_QUEUE = "queue"

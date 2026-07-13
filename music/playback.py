@@ -15,16 +15,14 @@ import os
 import traceback
 
 from pytgcalls.types import MediaStream
-from pytgcalls.exceptions import NoActiveGroupCall, NotInCallError
+from pytgcalls.exceptions import NoActiveGroupCall
 
-from config import MUSIC_IDLE_TIMEOUT_SECONDS
 from music import pool, state
 from music.state import LOOP_NONE, LOOP_TRACK, LOOP_QUEUE
 from music.panel_io import edit_panel_message
 
 _bot_instance = None
 _db = None
-_autoleave_tasks: dict = {}
 _last_panel: dict = {}
 
 
@@ -239,9 +237,11 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
             msg = "❗️ فایل صوتی پیدا نشد. دوباره روی یک فایل تازه ریپلای کن."
         elif "input entity" in reason.lower() or "peerchannel" in reason.lower():
             msg = (
-                "❗️ یوزربات هنوز اطلاعاتِ این گروه رو کامل نگرفته (کشِ داخلی خالیه).\n"
-                "یک پیامِ ساده تو گروه بفرست (مثلاً یک سلام) تا یوزربات گروه رو بشناسه، "
-                "بعد دوباره «پخش» رو امتحان کن."
+                "❗️ یوزربات هنوز اطلاعات این گروه رو کامل نگرفته (کش داخلی خالیه)، یا این که اصلا یوزربات داخل گروه اد نشده!\n"
+                "برای حل مشکل:\n"
+                "۱. اول مطمئن شو که یوزربات عضو گروه هست.\n"
+                "۲. اگر عضو بود، یک پیام ساده تو گروه بفرست تا یوزربات گروه رو بشناسه.\n"
+                "۳. بعد دوباره «پخش» رو امتحان کن."
             )
         else:
             msg = f"❗️ خطا:\n<code>{reason[:200]}</code>"
@@ -251,9 +251,11 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
         reason = str(e)
         if "input entity" in reason.lower() or "peerchannel" in reason.lower():
             msg = (
-                "❗️ یوزربات هنوز اطلاعاتِ این گروه رو کامل نگرفته (کشِ داخلی خالیه).\n"
-                "یک پیامِ ساده تو گروه بفرست (مثلاً یک سلام) تا یوزربات گروه رو بشناسه، "
-                "بعد دوباره «پخش» رو امتحان کن."
+                "❗️ یوزربات هنوز اطلاعات این گروه رو کامل نگرفته (کش داخلی خالیه)، یا این که اصلا یوزربات داخل گروه اد نشده!\n"
+                "برای حل مشکل:\n"
+                "۱. اول مطمئن شو که یوزربات عضو گروه هست.\n"
+                "۲. اگر عضو بود، یک پیام ساده تو گروه بفرست تا یوزربات گروه رو بشناسه.\n"
+                "۳. بعد دوباره «پخش» رو امتحان کن."
             )
             await _emit_toast(chat_id, msg)
         else:
@@ -265,7 +267,6 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
         **track, "state": "playing", "panel_msg_id": panel_msg_id,
         "initiator_id": initiator_id, "path": path, "assistant_index": assistant.index,
     })
-    _cancel_autoleave(chat_id)
     await _emit_panel(chat_id)
 
 
@@ -290,7 +291,6 @@ async def _play_next(chat_id: int):
             **track_for_loop, "state": "playing", "panel_msg_id": prev.get("panel_msg_id"),
             "initiator_id": prev.get("initiator_id"), "path": path, "assistant_index": assistant.index,
         })
-        _cancel_autoleave(chat_id)
         await _emit_panel(chat_id)
         return
 
@@ -302,29 +302,37 @@ async def _play_next(chat_id: int):
     await _play_next_from_queue(chat_id, prev)
 
 
-async def _play_next_from_queue(chat_id: int, prev: dict):
+async def _play_next_from_queue(chat_id: int, prev: dict, _attempt: int = 0):
     panel_msg_id = (prev.get("panel_msg_id") if prev else None) or _last_panel.get(chat_id)
     initiator_id = prev.get("initiator_id") if prev else None
     assistant = pool.get_assistant(state.get_cached_assistant_index(chat_id))
+
+    MAX_CONSECUTIVE_FAILURES = 5
+    if _attempt >= MAX_CONSECUTIVE_FAILURES:
+        await _leave(
+            chat_id,
+            f"❗️ {MAX_CONSECUTIVE_FAILURES} آهنگِ پیاپی تو صف پخش نشدن - از ویس‌چت خارج شدم. "
+            f"بقیه‌یِ صف رو دوباره امتحان کن.",
+        )
+        return
 
     track = state.pop_from_queue(chat_id)
     if track and assistant:
         try:
             path = await _start_stream(chat_id, assistant, track)
         except Exception as e:
-            print(f"💥 next-play error in {chat_id}: {e}")
-            await _play_next_from_queue(chat_id, prev)
+            print(f"💥 next-play error in {chat_id} (attempt {_attempt + 1}): {e}")
+            await _play_next_from_queue(chat_id, prev, _attempt=_attempt + 1)
             return
         state.set_now(chat_id, {
             **track, "state": "playing", "panel_msg_id": panel_msg_id,
             "initiator_id": initiator_id, "path": path, "assistant_index": assistant.index,
         })
-        _cancel_autoleave(chat_id)
         await _emit_panel(chat_id)
     else:
-        state.clear_now(chat_id)
-        await _emit_panel(chat_id)
-        _schedule_autoleave(chat_id)
+        # صف خالیه - بلافاصله از ویس‌چت خارج می‌شیم (نه بعد از یک تایم‌اوتِ
+        # بیکاری) چون دیگه هیچ آهنگی برای پخش نمونده.
+        await _leave(chat_id, "✅ پخش تمام شد و از ویس‌چت خارج شدم.")
 
 
 # ════════════════════════════════════════════════════════════
@@ -432,34 +440,10 @@ async def _leave(chat_id: int, toast: str = ""):
     if a:
         try:
             await a.calls.leave_call(chat_id)
-        except (NotInCallError, Exception):
+        except Exception:
             pass
 
     state.clear_now(chat_id)
-    _cancel_autoleave(chat_id)
     await _emit_panel(chat_id)
     if toast:
         await _emit_toast(chat_id, toast)
-
-
-# ════════════════════════════════════════════════════════════
-#  خروجِ خودکار به‌خاطرِ بیکاری
-# ════════════════════════════════════════════════════════════
-def _schedule_autoleave(chat_id: int):
-    _cancel_autoleave(chat_id)
-
-    async def _waiter():
-        try:
-            await asyncio.sleep(MUSIC_IDLE_TIMEOUT_SECONDS)
-            if not state.get_now(chat_id):
-                await _leave(chat_id, "🌙 به‌خاطرِ بیکاری، از ویس‌چت خارج شدم.")
-        except asyncio.CancelledError:
-            pass
-
-    _autoleave_tasks[chat_id] = asyncio.create_task(_waiter())
-
-
-def _cancel_autoleave(chat_id: int):
-    task = _autoleave_tasks.pop(chat_id, None)
-    if task and not task.done():
-        task.cancel()

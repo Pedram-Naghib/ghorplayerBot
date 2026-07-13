@@ -65,9 +65,6 @@ USERBOT_API_HASH = os.getenv("USERBOT_API_HASH", "")
 # مثال: USERBOT_SESSIONS="1BVtsOK...session1,1BVtsOK...session2"
 USERBOT_SESSIONS = os.getenv("USERBOT_SESSIONS", "")
 
-# مدت بیکاریِ مجاز (ثانیه) پیش از این‌که یوزربات خودکار از ویس‌چت خارج بشه.
-MUSIC_IDLE_TIMEOUT_SECONDS = int(os.getenv("MUSIC_IDLE_TIMEOUT_SECONDS", 180))
-
 # جستجو/دانلود از یوتیوب (اختیاری، جدا از حالتِ «ریپلای فایل»). سرورهای
 # ابری (Render هم همین‌طور) معمولاً بدونِ کوکیِ یک اکانتِ واقعیِ یوتیوب توسط
 # خودِ یوتیوب «ربات» تشخیص داده و بلاک می‌شن؛ اگه فایلِ cookies.txt رو کنارِ

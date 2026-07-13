@@ -43,7 +43,8 @@ BOT_DL_LIMIT = 20 * 1024 * 1024
 
 _CONTROL_ACTIONS = {
     "بعدی": "skip",
-    "پایان پخش": "stop",
+    "پایان": "stop",
+    "اتمام": "stop",
     "مکث": "pause",
     "ادامه پخش": "resume",
     "شافل": "shuffle",
@@ -94,7 +95,7 @@ def _build_kb(state_now: str, loop_label: str, muted: bool) -> InlineKeyboardMar
             InlineKeyboardButton("▶️ ادامه", callback_data="music_resume"),
             InlineKeyboardButton("⏭️ بعدی", callback_data="music_skip"),
         )
-    kb.row(InlineKeyboardButton("⏹️ پایان پخش", callback_data="music_stop"))
+    kb.row(InlineKeyboardButton("⏹️ پایان", callback_data="music_stop"))
     kb.row(
         InlineKeyboardButton("🔀 شافل", callback_data="music_shuffle"),
         InlineKeyboardButton("🔇 قطع صدا" if not muted else "🔊 وصل کردن صدا", callback_data="music_mute"),
@@ -355,14 +356,15 @@ async def handle_music_buttons(call):
             await bot.answer_callback_query(call.id, "📋 صف خالیه.", show_alert=True)
             return
         lines = []
-        for i, t in enumerate(tracks[:15], start=1):
-            t_title = (t.get("title") or "نامشخص")[:28]
+        for i, t in enumerate(tracks, start=1):
+            t_title = html.escape(t.get("title") or "نامشخص")
+            performer = t.get("performer") or ""
             dur = _fmt_duration(t.get("duration", 0))
-            lines.append(f"{i}. {t_title}" + (f" ({dur})" if dur else ""))
-        txt = "📋 آهنگ‌هایِ صف:\n" + "\n".join(lines)
-        if len(tracks) > 15:
-            txt += f"\n…و {len(tracks) - 15} موردِ دیگر"
-        await bot.answer_callback_query(call.id, txt[:195], show_alert=True)
+            extra = "   ".join(filter(None, [f"🎤 {html.escape(performer)}" if performer else "", f"⏱ {dur}" if dur else ""]))
+            lines.append(f"{i}. {t_title}" + (f"\n   {extra}" if extra else ""))
+        txt = f"📋 <b>صفِ پخش</b> ({len(tracks)} آهنگ)\n\n" + "\n".join(lines)
+        await bot.answer_callback_query(call.id)
+        await bot.send_message(chat_id, txt, reply_to_message_id=call.message.message_id)
         return
 
     if data == "kick":

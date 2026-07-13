@@ -10,6 +10,8 @@ handlers/roles_commands.py
 - «افزودن ادمین» / «حذف ادمین»       - مالکِ اصلی یا مالکِ ۲
 - «افزودن ادمین کل» / «حذف ادمین کل» - فقط مالکِ ربات (بات‌وایید، نه مخصوصِ یک گروه)
 - «مدیران»                          - نمایشِ نقش‌هایِ همین گروه
+- «پیکربندی»                        - همه‌یِ ادمین‌هایِ واقعیِ تلگرامِ گروه رو به نقشِ ادمینِ ربات اضافه می‌کنه
+- «پاک سازی»                        - نقشِ ادمینِ ربات رو از همه می‌گیره (مالک/مالکِ ۲ دست‌نخورده می‌مونن)
 - «ثبت تصویر [کلید]»                 - ثبتِ بنر (مثلاً music_hub_banner) - فقط مالکِ ربات/ادمین‌کل
 """
 
@@ -40,6 +42,8 @@ ADD_GLOBAL_ADMIN_TRIGGERS = {"افزودن ادمین کل"}
 REMOVE_GLOBAL_ADMIN_TRIGGERS = {"حذف ادمین کل"}
 LIST_GLOBAL_ADMINS_TRIGGERS = {"لیست ادمین کل"}
 SHOW_ROLES_TRIGGERS = {"مدیران", "نقش ها", "نقش‌ها"}
+SYNC_ADMINS_TRIGGERS = {"پیکربندی"}
+CLEAR_ADMINS_TRIGGERS = {"پاک سازی", "پاکسازی"}
 SET_IMAGE_PREFIX = "ثبت تصویر"
 
 _BANNER_CONTENT_TYPES = ("photo", "animation", "video")
@@ -323,6 +327,67 @@ async def show_roles(message: Message):
         await bot.reply_to(message, "هنوز هیچ نقشی در این گروه ثبت نشده.")
         return
     await bot.reply_to(message, "👥 <b>نقش‌های این گروه</b>\n\n" + "\n".join(lines))
+
+
+# ---------------------------------------------------------------- #
+# SYNC ADMINS - «پیکربندی»: همه‌یِ ادمین‌هایِ واقعیِ تلگرامِ این گروه رو به
+# نقشِ «ادمین» ربات اضافه می‌کنه (بدونِ دست‌زدن به مالک/مالکِ ۲) - برایِ
+# گروه‌هایی که از قبل چندین ادمین دارن و نمی‌خوای یکی‌یکی دستی اضافه کنی.
+# ---------------------------------------------------------------- #
+@bot.message_handler(chat_types=["group", "supergroup"], func=lambda m: _norm(m) in SYNC_ADMINS_TRIGGERS)
+async def sync_admins(message: Message):
+    chat_id = message.chat.id
+    if not await can_assign_role(db, chat_id, message.from_user.id, "admin"):
+        await bot.reply_to(message, "⚠️ فقط مالکِ اصلی یا مالکِ ۲ این گروه می‌تواند این کار را انجام دهد.")
+        return
+
+    try:
+        members = await bot.get_chat_administrators(chat_id)
+    except Exception as e:
+        await bot.reply_to(message, f"⚠️ گرفتنِ لیستِ ادمین‌هایِ تلگرام ناموفق بود:\n<code>{str(e)[:200]}</code>")
+        return
+
+    added = []
+    for member in members:
+        user = member.user
+        if user.is_bot:
+            continue
+        current_role = await db.get_user_role(chat_id, user.id)
+        if current_role in ("owner", "owner2", "admin"):
+            continue  # از قبل هم‌رتبه یا بالاتره - دست نمی‌زنیم
+        await db.set_user_role(chat_id, user.id, "admin",
+                                username=user.username, first_name=user.first_name, last_name=user.last_name)
+        added.append(bidi_isolate(await db.get_user_display_name(chat_id, user.id)))
+
+    if not added:
+        await bot.reply_to(message, "همه‌یِ ادمین‌هایِ واقعیِ تلگرام از قبل نقشِ ادمین رو داشتن - چیزی تغییر نکرد.")
+        return
+    await bot.reply_to(message, f"✅ {len(added)} نفر به‌عنوانِ ادمینِ ربات اضافه شدن:\n" + "، ".join(added))
+
+
+# ---------------------------------------------------------------- #
+# CLEAR ADMINS - «پاک سازی»: نقشِ ادمین رو از همه‌یِ کسانی که ادمینِ ربات
+# هستن می‌گیره (مالک/مالکِ ۲ دست‌نخورده می‌مونن).
+# ---------------------------------------------------------------- #
+@bot.message_handler(chat_types=["group", "supergroup"], func=lambda m: _norm(m) in CLEAR_ADMINS_TRIGGERS)
+async def clear_admins(message: Message):
+    chat_id = message.chat.id
+    if not await can_assign_role(db, chat_id, message.from_user.id, "admin"):
+        await bot.reply_to(message, "⚠️ فقط مالکِ اصلی یا مالکِ ۲ این گروه می‌تواند این کار را انجام دهد.")
+        return
+
+    admin_ids = await db.list_users_by_role(chat_id, "admin")
+    if not admin_ids:
+        await bot.reply_to(message, "هیچ ادمینی (توسطِ ربات) ثبت نشده که پاک بشه.")
+        return
+
+    for uid in admin_ids:
+        await db.set_user_role(chat_id, uid, "normal")
+
+    await bot.reply_to(
+        message,
+        f"✅ دسترسیِ ادمین از {len(admin_ids)} نفر گرفته شد (مالکِ اصلی و مالکِ ۲ دست‌نخورده موندن).",
+    )
 
 
 # ---------------------------------------------------------------- #
