@@ -157,17 +157,37 @@ async def start_pool():
         print("⚠️ هیچ یوزرباتی با موفقیت بالا نیامد - موتورِ موزیک عملاً غیرفعاله.")
 
 
-def pool_status_text() -> str:
+async def pool_status_text() -> str:
+    """وضعیتِ استخر - فقط یوزربات‌هایی که هم سالمن هم الان تو هیچ ویس‌چتی
+    مشغول نیستن به‌عنوانِ «آماده» نشون داده می‌شن؛ اونایی که الان دارن جایِ
+    دیگه‌ای پخش می‌کنن عمداً از لیست حذف می‌شن - این دستور برایِ اینه که
+    بقیه بتونن یک یوزرباتِ واقعاً بیکار رو به گروهشون اضافه کنن، نه یکی که
+    همین الان مشغولِ یک گروهِ دیگه‌ست."""
     if not _assistants:
-        text = "هیچ یوزرباتی تنظیم نشده. USERBOT_SESSIONS رو در .env پر کن."
-    else:
-        lines = []
-        for a in _assistants:
-            state = "🟢 آماده" if a.ready else "🔴 خطا در راه‌اندازی"
-            uname = f"@{a.username}" if a.username else "بدون‌یوزرنیم"
-            lines.append(f"#{a.index} — {a.name or '؟'} ({uname}) — {state}")
+        return "هیچ یوزرباتی تنظیم نشده. USERBOT_SESSIONS رو در .env پر کن."
+
+    lines = []
+    idle_count = 0
+    for a in _assistants:
+        if not a.ready:
+            lines.append(f"#{a.index} — {a.name or '؟'} — 🔴 خطا در راه‌اندازی")
+            continue
+        try:
+            busy = bool(await a.calls.calls)
+        except Exception:
+            busy = False
+        if busy:
+            continue  # مشغولِ پخش تو یک گروهِ دیگه‌ست - عمداً نشون داده نمی‌شه
+        idle_count += 1
+        uname = f"@{a.username}" if a.username else "بدون‌یوزرنیم"
+        lines.append(f"#{a.index} — {a.name or '؟'} ({uname}) — 🟢 آماده")
+
+    if idle_count:
         lines.append("\nهرکدوم از این یوزرنیم‌ها رو می‌تونی مستقیم به این گروه اضافه کنی.")
-        text = "\n".join(lines)
+    else:
+        lines.append("\n😴 همه‌یِ یوزربات‌هایِ سالم الان مشغولِ پخش در جایِ دیگه‌ان - چند دقیقه‌یِ دیگه دوباره امتحان کن.")
+
+    text = "\n".join(lines)
     if SUPPORT_CONTACT:
         text += "\n\n🆘 اگه خودت نتونستی اضافه‌شون کنی، دکمه‌ی زیر رو بزن."
     return text

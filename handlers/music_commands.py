@@ -335,9 +335,10 @@ async def handle_hub(message):
     ),
 )
 async def handle_pool_status(message):
+    status = await pool.pool_status_text()
     await bot.reply_to(
         message,
-        f"🎛 وضعیتِ استخرِ یوزربات‌ها:\n\n{pool.pool_status_text()}",
+        f"🎛 وضعیتِ استخرِ یوزربات‌ها:\n\n{status}",
         reply_markup=pool.support_keyboard(),
     )
 
