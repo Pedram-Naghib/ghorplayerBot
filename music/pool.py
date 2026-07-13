@@ -17,6 +17,7 @@ tools/generate_userbot_session.py) هم‌زمان بالا بیان؛ هر گر
 """
 
 import os
+from typing import Optional
 from urllib.parse import urlparse  # ماژول استاندارد برای شکستن آدرس پراکسی
 
 from telethon import TelegramClient
@@ -25,8 +26,33 @@ from telethon.sessions import StringSession
 from pytgcalls import PyTgCalls
 from pytgcalls.types import StreamEnded
 
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 # حتماً PROXY_URL باید اینجا ایمپورت شود
 from config import USERBOT_API_ID, USERBOT_API_HASH, USERBOT_SESSIONS, PROXY_URL, SUPPORT_CONTACT
+
+
+def _support_url() -> str:
+    """SUPPORT_CONTACT رو به یک URL معتبر برایِ دکمه‌یِ شیشه‌ای تبدیل می‌کنه -
+    چه به‌صورتِ لینکِ کامل (https://t.me/...) تنظیم شده باشه، چه فقط یوزرنیم
+    (با یا بدونِ @). خروجیِ خالی یعنی SUPPORT_CONTACT اصلاً تنظیم نشده."""
+    contact = (SUPPORT_CONTACT or "").strip()
+    if not contact:
+        return ""
+    if contact.startswith(("http://", "https://", "tg://")):
+        return contact
+    return f"https://t.me/{contact.lstrip('@')}"
+
+
+def support_keyboard() -> Optional[InlineKeyboardMarkup]:
+    """یک دکمه‌یِ شیشه‌ایِ «پیام به پشتیبانی» - وقتی SUPPORT_CONTACT تنظیم
+    نشده، None برمی‌گردونه (یعنی reply_markup اصلاً اضافه نشه)."""
+    url = _support_url()
+    if not url:
+        return None
+    kb = InlineKeyboardMarkup()
+    kb.row(InlineKeyboardButton("🆘 پیام به پشتیبانی", url=url))
+    return kb
 
 
 class Assistant:
@@ -143,7 +169,7 @@ def pool_status_text() -> str:
         lines.append("\nهرکدوم از این یوزرنیم‌ها رو می‌تونی مستقیم به این گروه اضافه کنی.")
         text = "\n".join(lines)
     if SUPPORT_CONTACT:
-        text += f"\n\n🆘 اگه خودت نتونستی اضافه‌شون کنی، به پشتیبانی پیام بده: {SUPPORT_CONTACT}"
+        text += "\n\n🆘 اگه خودت نتونستی اضافه‌شون کنی، دکمه‌ی زیر رو بزن."
     return text
 
 
@@ -191,7 +217,7 @@ async def get_or_assign(db, chat_id: int):
     if a is None:
         usernames = [f"@{x.username}" for x in _assistants if x.ready and x.username]
         who = "، ".join(usernames) if usernames else "یکی از یوزربات‌های تنظیم‌شده"
-        support_line = f"\nیا به پشتیبانی پیام بده: {SUPPORT_CONTACT}" if SUPPORT_CONTACT else ""
+        support_line = "\nیا دکمه‌ی «پیام به پشتیبانی» زیر رو بزن." if SUPPORT_CONTACT else ""
         return None, (
             f"❗️ هیچ‌کدام از یوزربات‌ها هنوز عضو این گروه نیستند.\n"
             f"اول {who} را به گروه اضافه کن، بعد دوباره «پخش» رو امتحان کن.{support_line}"

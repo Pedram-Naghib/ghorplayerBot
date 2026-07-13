@@ -325,16 +325,20 @@ async def handle_hub(message):
     sent = await send_panel_message(chat_id, text_out, kb=kb, reply_to_message_id=message.message_id)
     playback.repoint_panel(chat_id, sent.message_id)
 
-# ── «یوزربات‌ها» - وضعیتِ استخر ────────────────────────────
+# ── «یوزربات ها» - وضعیتِ استخر (اطلاعاتیه، برای همه قابل دیدنه؛ نیازی به
+# نقشِ خاصی نداره چون کلِ هدفش کمک به هرکسیه که بخواد یوزربات رو اضافه کنه؛
+# در گروه و در پیوی هردو کار می‌کنه) ─────────────────────────────
 @bot.message_handler(
-    func=lambda m: _is_group_text(m) and matches_command(normalize_trigger(m.text), {"یوزربات‌ها", "یوزرباتها", "یوزربات ها"}),
+    func=lambda m: matches_command(
+        normalize_trigger(m.text), {"یوزربات ها", "یوزربات‌ها", "یوزرباتها"}
+    ),
 )
 async def handle_pool_status(message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-    if not await is_authorized_admin(db, chat_id, user_id):
-        return
-    await bot.reply_to(message, f"🎛 وضعیتِ استخرِ یوزربات‌ها:\n\n{pool.pool_status_text()}")
+    await bot.reply_to(
+        message,
+        f"🎛 وضعیتِ استخرِ یوزربات‌ها:\n\n{pool.pool_status_text()}",
+        reply_markup=pool.support_keyboard(),
+    )
 
 # ════════════════════════════════════════════════════════
 #  دکمه‌هایِ هاب

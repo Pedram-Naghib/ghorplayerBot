@@ -178,7 +178,7 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
         assistant, assign_err = await pool.get_or_assign(_db, chat_id)
     if assign_err:
         _cleanup_file(track.get("audio_path"))
-        await edit_panel_message(chat_id, panel_msg_id, assign_err)
+        await edit_panel_message(chat_id, panel_msg_id, assign_err, kb=pool.support_keyboard())
         return
 
     now = state.get_now(chat_id)
