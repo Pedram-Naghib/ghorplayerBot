@@ -404,7 +404,24 @@ async def set_image(message: Message):
         return
     parts = _norm(message).split()
     reply = message.reply_to_message
-    if len(parts) < 3 or not reply or reply.content_type not in _BANNER_CONTENT_TYPES:
+
+    # نکته‌یِ مهم: خیلی از کلاینت‌ها (خصوصاً دسکتاپ، یا وقتی فایل drag-and-drop
+    # می‌شه) ویدیو/گیف رو به‌جایِ پیامِ «video»/«animation»یِ فشرده، به‌صورتِ یک
+    # «document»یِ ساده می‌فرستن - حتی اگه تو کلاینت خودش با برچسبِ "Video"
+    # نشون داده بشه. این یعنی content_type واقعیش می‌شه "document"، نه
+    # "video"، و چکِ قبلی (که فقط photo/animation/video رو قبول می‌کرد) این
+    # حالت رو رد می‌کرد. الان mime_typeِ خودِ سندِ ریپلای‌شده رو هم چک می‌کنیم.
+    kind = reply.content_type if reply else None
+    if kind == "document" and reply.document.mime_type:
+        mime = reply.document.mime_type
+        if mime.startswith("video/"):
+            kind = "video"
+        elif mime == "image/gif":
+            kind = "animation"
+        elif mime.startswith("image/"):
+            kind = "photo"
+
+    if len(parts) < 3 or not reply or kind not in _BANNER_CONTENT_TYPES:
         await bot.reply_to(
             message,
             "⚠️ رویِ یک عکس، گیف یا ویدیو ریپلای کنید و بنویسید:\n<code>ثبت تصویر [کلید]</code>\n"
@@ -412,12 +429,14 @@ async def set_image(message: Message):
         )
         return
     key = parts[2]
-    if reply.content_type == "photo":
+    if kind == "photo" and reply.content_type == "photo":
         file_id = reply.photo[-1].file_id
-    elif reply.content_type == "animation":
+    elif kind == "animation" and reply.content_type == "animation":
         file_id = reply.animation.file_id
-    else:  # video
+    elif kind == "video" and reply.content_type == "video":
         file_id = reply.video.file_id
-    await db.set_asset(key, file_id, content_type=reply.content_type, set_by=message.from_user.id)
-    kind_label = {"photo": "تصویر", "animation": "گیف", "video": "ویدیو"}[reply.content_type]
+    else:  # reply.content_type == "document" but kind resolved via mime_type above
+        file_id = reply.document.file_id
+    await db.set_asset(key, file_id, content_type=kind, set_by=message.from_user.id)
+    kind_label = {"photo": "تصویر", "animation": "گیف", "video": "ویدیو"}[kind]
     await bot.reply_to(message, f"✅ {kind_label} با کلیدِ <code>{key}</code> ذخیره شد.")
