@@ -405,38 +405,39 @@ async def set_image(message: Message):
     parts = _norm(message).split()
     reply = message.reply_to_message
 
-    # نکته‌یِ مهم: خیلی از کلاینت‌ها (خصوصاً دسکتاپ، یا وقتی فایل drag-and-drop
-    # می‌شه) ویدیو/گیف رو به‌جایِ پیامِ «video»/«animation»یِ فشرده، به‌صورتِ یک
-    # «document»یِ ساده می‌فرستن - حتی اگه تو کلاینت خودش با برچسبِ "Video"
-    # نشون داده بشه. این یعنی content_type واقعیش می‌شه "document"، نه
-    # "video"، و چکِ قبلی (که فقط photo/animation/video رو قبول می‌کرد) این
-    # حالت رو رد می‌کرد. الان mime_typeِ خودِ سندِ ریپلای‌شده رو هم چک می‌کنیم.
-    kind = reply.content_type if reply else None
-    if kind == "document" and reply.document.mime_type:
-        mime = reply.document.mime_type
-        if mime.startswith("video/"):
-            kind = "video"
-        elif mime == "image/gif":
-            kind = "animation"
-        elif mime.startswith("image/"):
-            kind = "photo"
+    # به‌جایِ تکیه کردن به reply.content_type (که برایِ ویدیو/گیفِ فرستاده‌شده
+    # به‌صورتِ «document» می‌شه "document"، نه "video"/"animation")، مستقیم
+    # چک می‌کنیم کدوم فیلد واقعاً پر شده - این روش قابلِ‌اتکاتره چون به
+    # mime_type هم وابسته نیست (بعضی کلاینت‌ها/فایل‌ها mime_type ندارن).
+    kind, file_id = None, None
+    if reply:
+        if reply.photo:
+            kind, file_id = "photo", reply.photo[-1].file_id
+        elif reply.animation:
+            kind, file_id = "animation", reply.animation.file_id
+        elif reply.video:
+            kind, file_id = "video", reply.video.file_id
+        elif reply.document:
+            mime = (reply.document.mime_type or "").lower()
+            fname = (reply.document.file_name or "").lower()
+            if mime.startswith("video/") or fname.endswith((".mp4", ".mov", ".mkv", ".webm", ".avi")):
+                kind = "video"
+            elif mime == "image/gif" or fname.endswith(".gif"):
+                kind = "animation"
+            elif mime.startswith("image/") or fname.endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
+                kind = "photo"
+            if kind:
+                file_id = reply.document.file_id
 
-    if len(parts) < 3 or not reply or kind not in _BANNER_CONTENT_TYPES:
+    if len(parts) < 3 or not reply or not kind:
+        detected = f"\n\n(نوعِ شناسایی‌شده: <code>{reply.content_type}</code>)" if reply else ""
         await bot.reply_to(
             message,
             "⚠️ رویِ یک عکس، گیف یا ویدیو ریپلای کنید و بنویسید:\n<code>ثبت تصویر [کلید]</code>\n"
-            "مثال: <code>ثبت تصویر music_hub_banner</code>",
+            f"مثال: <code>ثبت تصویر music_hub_banner</code>{detected}",
         )
         return
     key = parts[2]
-    if kind == "photo" and reply.content_type == "photo":
-        file_id = reply.photo[-1].file_id
-    elif kind == "animation" and reply.content_type == "animation":
-        file_id = reply.animation.file_id
-    elif kind == "video" and reply.content_type == "video":
-        file_id = reply.video.file_id
-    else:  # reply.content_type == "document" but kind resolved via mime_type above
-        file_id = reply.document.file_id
     await db.set_asset(key, file_id, content_type=kind, set_by=message.from_user.id)
     kind_label = {"photo": "تصویر", "animation": "گیف", "video": "ویدیو"}[kind]
     await bot.reply_to(message, f"✅ {kind_label} با کلیدِ <code>{key}</code> ذخیره شد.")
