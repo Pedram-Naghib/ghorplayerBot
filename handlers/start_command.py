@@ -11,24 +11,19 @@ handlers/start_command.py
 
 «راهنما» به‌جایِ یک پیامِ متنیِ طولانی، یک منویِ دکمه‌ایه - هر بخش با یک
 دکمه‌یِ شیشه‌ای باز می‌شه (با دکمه‌یِ «بازگشت» برایِ رجوع به منو)، تا کسی
-مجبور نباشه یک پیامِ بلند رو اسکرول کنه.
+مجبور نباشه یک پیامِ بلند رو اسکرول کنه. «/start» هم خودش یک دکمه‌ی «📖
+راهنما» داره که مستقیم همین منو رو باز می‌کنه.
+
+INVOKER-LOCK: هر پیامِ حاویِ این دکمه‌ها (چه از «/start» چه از «راهنما»)
+فقط توسطِ همون کسی که دستور رو زده قابلِ‌استفاده‌ست - آیدیِ همون فرستنده
+داخلِ خودِ callback_data کدگذاری می‌شه (نیازی به دیتابیس/حافظه‌ی جدا نیست)
+و هر کلیکِ کسِ دیگه‌ای رد می‌شه.
 """
 
 from telebot.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from core import bot
 from utils.text import normalize_trigger
-
-START_TEXT = (
-    "🎵 <b>سلام!</b>\n\n"
-    "من یک ربات پخشِ موزیک برایِ ویس‌چتِ گروه‌هایِ تلگرام هستم.\n\n"
-    "برایِ شروع:\n"
-    "۱. من رو به یک گروه اضافه کن (خودکار <b>مالکِ اصلیِ</b> همون گروه می‌شی)\n"
-    "۲. از تنظیماتِ گروه من رو <b>ادمین</b> کن (توضیحِ این‌که چرا لازمه رو با "
-    "<code>راهنما</code> ببین)\n"
-    "۳. رویِ یک فایلِ صوتی/ویدیویی ریپلای کن و بنویس <code>پخش</code>\n\n"
-    "برایِ راهنمایِ کامل بنویس: <code>راهنما</code>"
-)
 
 # هر بخش: (عنوانِ دکمه، متنِ کامل). ترتیبِ دیکشنری همون ترتیبِ دکمه‌هاست.
 HELP_SECTIONS = {
@@ -73,39 +68,70 @@ HELP_SECTIONS = {
     ),
 }
 
+MENU_TEXT = "📖 <b>راهنمایِ ربات</b>\n\nیک بخش رو انتخاب کن:"
 
-def _menu_kb() -> InlineKeyboardMarkup:
+START_TEXT = (
+    "🎵 <b>سلام!</b>\n\n"
+    "من یک ربات پخشِ موزیک برایِ ویس‌چتِ گروه‌هایِ تلگرام هستم.\n\n"
+    "برایِ شروع:\n"
+    "۱. من رو به یک گروه اضافه کن (خودکار <b>مالکِ اصلیِ</b> همون گروه می‌شی)\n"
+    "۲. از تنظیماتِ گروه من رو <b>ادمین</b> کن\n"
+    "۳. رویِ یک فایلِ صوتی/ویدیویی ریپلای کن و بنویس <code>پخش</code>\n\n"
+    "برایِ راهنمایِ کامل، دکمه‌یِ زیر رو بزن 👇"
+)
+
+
+# ── ساختِ callback_data با آیدیِ فرستنده داخلش (invoker-lock) ──────────
+def _cb(action: str, invoker_id: int) -> str:
+    return f"help|{action}|{invoker_id}"
+
+
+def _parse_cb(data: str):
+    _prefix, action, invoker_id = data.split("|", 2)
+    return action, int(invoker_id)
+
+
+def _menu_kb(invoker_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup()
     for key, (label, _text) in HELP_SECTIONS.items():
-        kb.row(InlineKeyboardButton(label, callback_data=f"help_{key}"))
-    kb.row(InlineKeyboardButton("❌ بستن", callback_data="help_close"))
+        kb.row(InlineKeyboardButton(label, callback_data=_cb(key, invoker_id)))
+    kb.row(InlineKeyboardButton("❌ بستن", callback_data=_cb("close", invoker_id)))
     return kb
 
 
-def _section_kb() -> InlineKeyboardMarkup:
+def _section_kb(invoker_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup()
-    kb.row(InlineKeyboardButton("🔙 بازگشت به راهنما", callback_data="help_menu"))
+    kb.row(InlineKeyboardButton("🔙 بازگشت به راهنما", callback_data=_cb("menu", invoker_id)))
     return kb
 
 
-MENU_TEXT = "📖 <b>راهنمایِ ربات</b>\n\nیک بخش رو انتخاب کن:"
+def _start_kb(invoker_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardMarkup()
+    kb.row(InlineKeyboardButton("📖 راهنما", callback_data=_cb("menu", invoker_id)))
+    return kb
 
 
 @bot.message_handler(commands=["start"])
 async def handle_start(message: Message):
-    await bot.reply_to(message, START_TEXT)
+    await bot.reply_to(message, START_TEXT, reply_markup=_start_kb(message.from_user.id))
 
 
 @bot.message_handler(func=lambda m: normalize_trigger(m.text or "").strip() in ("راهنما", "کمک", "help"))
 async def handle_help(message: Message):
-    await bot.reply_to(message, MENU_TEXT, reply_markup=_menu_kb())
+    await bot.reply_to(message, MENU_TEXT, reply_markup=_menu_kb(message.from_user.id))
 
 
-@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("help_"))
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("help|"))
 async def handle_help_buttons(call: CallbackQuery):
-    key = call.data[len("help_"):]
+    action, invoker_id = _parse_cb(call.data)
 
-    if key == "close":
+    if call.from_user.id != invoker_id:
+        await bot.answer_callback_query(
+            call.id, "⛔️ این دکمه فقط برایِ کسیه که خودش این دستور رو زده.", show_alert=True
+        )
+        return
+
+    if action == "close":
         try:
             await bot.delete_message(call.message.chat.id, call.message.message_id)
         except Exception:
@@ -113,15 +139,19 @@ async def handle_help_buttons(call: CallbackQuery):
         await bot.answer_callback_query(call.id)
         return
 
-    if key == "menu":
-        await bot.edit_message_text(MENU_TEXT, call.message.chat.id, call.message.message_id, reply_markup=_menu_kb())
+    if action == "menu":
+        await bot.edit_message_text(
+            MENU_TEXT, call.message.chat.id, call.message.message_id, reply_markup=_menu_kb(invoker_id)
+        )
         await bot.answer_callback_query(call.id)
         return
 
-    section = HELP_SECTIONS.get(key)
+    section = HELP_SECTIONS.get(action)
     if not section:
         await bot.answer_callback_query(call.id)
         return
     _label, text = section
-    await bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=_section_kb())
+    await bot.edit_message_text(
+        text, call.message.chat.id, call.message.message_id, reply_markup=_section_kb(invoker_id)
+    )
     await bot.answer_callback_query(call.id)

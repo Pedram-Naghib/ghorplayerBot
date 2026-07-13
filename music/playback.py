@@ -142,6 +142,16 @@ async def _start_stream(chat_id: int, assistant, track: dict) -> str:
         else:
             raise ValueError("MISSING_LOCAL_FILE")
 
+    # قبل از پیوستن به تماس، مطمئن می‌شیم کشِ entity هایِ Telethon برای این چت
+    # تازه‌ست - رایج‌ترین دلیلِ ارورِ "Could not find the input entity for
+    # PeerChannel" همینه (مثلاً درست بعدِ اضافه‌شدنِ یوزربات به گروه، یا بعدِ
+    # ری‌استارتِ سرویس، که کش هنوز خالیه). این یک تلاشِ best-effortِ اضافیه،
+    # نه یک ضمانتِ صددرصدی - اگه بازم نشد، پایین با یک پیامِ روشن مدیریت می‌شه.
+    try:
+        await assistant.client.get_entity(chat_id)
+    except Exception:
+        pass
+
     video_flags = MediaStream.Flags.AUTO_DETECT if track.get("with_video") else MediaStream.Flags.IGNORE
     try:
         await assistant.calls.play(chat_id, MediaStream(path, video_flags=video_flags))
@@ -227,13 +237,28 @@ async def cmd_play(chat_id: int, track: dict, panel_msg_id: int, initiator_id: i
             msg = "❗️ یوزربات این گروه/چت را نمی‌شناسد. مطمئن شو عضوش هست."
         elif "GET_MESSAGE" in reason:
             msg = "❗️ فایل صوتی پیدا نشد. دوباره روی یک فایل تازه ریپلای کن."
+        elif "input entity" in reason.lower() or "peerchannel" in reason.lower():
+            msg = (
+                "❗️ یوزربات هنوز اطلاعاتِ این گروه رو کامل نگرفته (کشِ داخلی خالیه).\n"
+                "یک پیامِ ساده تو گروه بفرست (مثلاً یک سلام) تا یوزربات گروه رو بشناسه، "
+                "بعد دوباره «پخش» رو امتحان کن."
+            )
         else:
-            msg = f"❗️ خطا:\n<code>{reason}</code>"
+            msg = f"❗️ خطا:\n<code>{reason[:200]}</code>"
         await _emit_toast(chat_id, msg)
         return
     except Exception as e:
-        traceback.print_exc()
-        await _emit_toast(chat_id, f"❗️ اتصال به ویس‌چت ناموفق بود.\n<code>{type(e).__name__}: {str(e)[:200]}</code>")
+        reason = str(e)
+        if "input entity" in reason.lower() or "peerchannel" in reason.lower():
+            msg = (
+                "❗️ یوزربات هنوز اطلاعاتِ این گروه رو کامل نگرفته (کشِ داخلی خالیه).\n"
+                "یک پیامِ ساده تو گروه بفرست (مثلاً یک سلام) تا یوزربات گروه رو بشناسه، "
+                "بعد دوباره «پخش» رو امتحان کن."
+            )
+            await _emit_toast(chat_id, msg)
+        else:
+            traceback.print_exc()
+            await _emit_toast(chat_id, f"❗️ اتصال به ویس‌چت ناموفق بود.\n<code>{type(e).__name__}: {reason[:200]}</code>")
         return
 
     state.set_now(chat_id, {
